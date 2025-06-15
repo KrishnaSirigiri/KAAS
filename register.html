@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Register | AI Imaginarium</title>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+  <style>
+    :root {
+      --bg-grad: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+      --card-bg: rgba(255,255,255,.06);
+      --border: rgba(255,255,255,.15);
+      --accent: #6c63ff;
+      --accent-dark: #574fcf;
+      --txt-main:#fff;
+      --txt-muted:#ccc;
+      --error:#ff7b7b;
+      --success:#34d399;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0}
+    body{
+      height:100vh;display:flex;justify-content:center;align-items:center;
+      background:var(--bg-grad);font-family:'Poppins',sans-serif;color:var(--txt-main);
+      padding:1rem
+    }
+    .card{
+      width:100%;max-width:420px;padding:2.5rem;
+      background:var(--card-bg);border:1px solid var(--border);
+      border-radius:18px;backdrop-filter:blur(18px);
+      box-shadow:0 8px 28px rgba(0,0,0,.25);animation:fade 0.6s ease
+    }
+    h2{text-align:center;font-weight:600;margin-bottom:1.5rem}
+    input,button{
+      width:100%;padding:.8rem 1rem;margin-top:.9rem;border:none;
+      border-radius:10px;font-size:.95rem
+    }
+    input{background:rgba(255,255,255,.12);color:var(--txt-main)}
+    input::placeholder{color:var(--txt-muted)}
+    input:focus{outline:2px solid var(--accent-dark)}
+    #usernameError{color:var(--error);font-size:.75rem;margin-top:.3rem}
+    button{
+      background:var(--accent);color:#000;font-weight:600;margin-top:1.2rem;
+      cursor:pointer;transition:background .3s ease
+    }
+    button:hover{background:var(--accent-dark)}
+    p{margin-top:1.2rem;text-align:center;font-size:.85rem}
+    a{color:#ffcc00;text-decoration:none}
+    a:hover{text-decoration:underline}
+    /* Pop‑up */
+    #popup{
+      position:fixed;top:20px;right:20px;padding:1rem 1.2rem;
+      background:var(--success);color:#fff;border-radius:10px;
+      font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.3);display:none;z-index:100
+    }
+    @keyframes fade{from{opacity:0;transform:translateY(-20px)}to{opacity:1}}
+    /* Mobile */
+    @media (max-width:480px){.card{padding:1.8rem}}
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>Create your account</h2>
+    <form id="registerForm" autocomplete="off">
+      <input id="fullName" type="text"  placeholder="Full name"    required />
+      <input id="email"    type="email" placeholder="Email address" required />
+      <input id="username" type="text"  placeholder="Username"      required />
+      <div id="usernameError"></div>
+      <input id="password"        type="password" placeholder="Password (min 8)"           required />
+      <input id="confirmPassword" type="password" placeholder="Confirm password"            required />
+      <button type="submit">Register</button>
+      <p>Have an account? <a href="login.html">Login here</a></p>
+    </form>
+  </div>
+
+  <div id="popup"></div>
+
+  <script>
+    /* ---------- Firebase ---------- */
+    const firebaseConfig={
+      apiKey:"AIzaSyCOsB94YPYT0xv8VRUnToDdtTJnAc34IvY",
+      authDomain:"ai-image-generator-ca8fb.firebaseapp.com",
+      projectId:"ai-image-generator-ca8fb",
+      storageBucket:"ai-image-generator-ca8fb.appspot.com",
+      messagingSenderId:"515690311039",
+      appId:"1:515690311039:web:3f740c2d7ef6b8387a7e4a"};
+    firebase.initializeApp(firebaseConfig);
+    const auth=firebase.auth(),db=firebase.firestore();
+
+    /* ---------- Helpers ---------- */
+    const $=id=>document.getElementById(id);
+    const showPopup=(msg,color)=>{                // color ⬌ quick accent switch
+      const p=$('popup');p.textContent=msg;p.style.background=color||'var(--success)';
+      p.style.display='block';setTimeout(()=>p.style.display='none',3000);
+    };
+    /* Debounce util */
+    const debounce=(fn,delay=500)=>{
+      let t;return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),delay);}
+    };
+
+    /* ---------- Username live check ---------- */
+    const usernameInput=$('username'),usernameErr=$('usernameError');
+    const checkUsername=debounce(async()=>{
+      const username=usernameInput.value.trim().toLowerCase();
+      if(!username){usernameErr.textContent='';usernameInput.setCustomValidity('');return;}
+      try{
+        /* pattern A – one fast read if you store usernames as docIds:
+           const taken= (await db.doc(`usernames/${username}`).get()).exists;
+           pattern B – keep existing structure (1 query only when paused): */
+        const taken=!(await db.collection('users').where('username','==',username).limit(1).get()).empty;
+        if(taken){
+          usernameErr.textContent='❌ Username already taken';
+          usernameInput.setCustomValidity('Username already taken');
+          showPopup('Username already taken','var(--error)');
+        }else{
+          usernameErr.textContent='';usernameInput.setCustomValidity('');
+        }
+      }catch(err){
+        console.error(err);showPopup('Error checking username','var(--error)');
+      }
+    });
+    usernameInput.addEventListener('input',checkUsername);
+
+    /* ---------- Form submit ---------- */
+    $('registerForm').addEventListener('submit',async e=>{
+      e.preventDefault();
+      /* 1 | Local validations first (zero DB cost) */
+      const fullName=$('fullName').value.trim(),email=$('email').value.trim(),
+            username=$('username').value.trim().toLowerCase(),
+            pwd=$('password').value,cpwd=$('confirmPassword').value;
+      if(pwd.length<8) return showPopup('Password must be ≥ 8 characters','var(--error)');
+      if(pwd!==cpwd)   return showPopup('Passwords do not match','var(--error)');
+
+      try{
+        /* 2 | Final username check—only ONCE */
+        const taken=!(await db.collection('users').where('username','==',username).limit(1).get()).empty;
+        if(taken) return showPopup('Username already taken','var(--error)');
+
+        /* 3 | Create user */
+        const {user}=await auth.createUserWithEmailAndPassword(email,pwd);
+        await db.collection('users').doc(user.uid).set({
+          fullName,username,email,createdAt:firebase.firestore.FieldValue.serverTimestamp()
+        });
+        showPopup('✅ Registration successful! Redirecting…');
+        setTimeout(()=>window.location.href='image-generator.html',1200);
+      }catch(err){
+        console.error(err);showPopup('⚠️ '+err.message,'var(--error)');
+      }
+    });
+  </script>
+</body>
+</html>
